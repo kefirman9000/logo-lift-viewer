@@ -284,6 +284,8 @@ public class MainActivity extends Activity {
         setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
                                    : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         flipBtn.setText(on ? "Flipped" : "Flip");
+        // when flipped, tuck the dock away so the screen is clear; tap the image to bring it back
+        if (on && dockShown) dock.post(this::toggleDock);
         flipBtn.setTextColor(on ? 0xFF1A1300 : INK);
         flipBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(on ? ACCENT : 0xFF2A2E33));
     }
