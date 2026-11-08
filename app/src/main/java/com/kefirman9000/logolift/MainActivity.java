@@ -53,6 +53,7 @@ public class MainActivity extends Activity {
     private LinearLayout dock;
     private TextView counter;
     private Button bgBtn;
+    private Button invBtn;
     private boolean dockShown = true;
     private boolean fromFolder = false;
 
@@ -75,28 +76,13 @@ public class MainActivity extends Activity {
         view.setSizeFrac(prefs.getInt("size", 70) / 100f);
         root.addView(view, new FrameLayout.LayoutParams(-1, -1));
 
-        counter = new TextView(this);
-        counter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        counter.setTypeface(android.graphics.Typeface.MONOSPACE);
-        counter.setPadding(dp(8), dp(3), dp(8), dp(3));
-        FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
-        clp.setMargins(0, dp(10), dp(12), 0);
-        root.addView(counter, clp);
-        counter.setOnApplyWindowInsetsListener((v, ins) -> {
-            Insets s = ins.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars() | WindowInsets.Type.displayCutout());
-            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) v.getLayoutParams();
-            p.topMargin = dp(10) + s.top;
-            p.rightMargin = dp(12) + s.right;
-            v.setLayoutParams(p);
-            return ins;
-        });
-
         dock = buildDock();
         root.addView(dock, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
 
         setContentView(root);
         hideSystemBars();
         applyBg();
+        applyInvert();
 
         view.setListener(new LogoView.Listener() {
             @Override public void onTap() { toggleDock(); }
@@ -152,6 +138,13 @@ public class MainActivity extends Activity {
             return ins;
         });
 
+        counter = new TextView(this);
+        counter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        counter.setTypeface(android.graphics.Typeface.MONOSPACE);
+        counter.setTextColor(MUTED);
+        counter.setGravity(Gravity.END);
+        d.addView(counter, new LinearLayout.LayoutParams(-1, -2));
+
         d.addView(sliderRow("HEIGHT", 6, 85, prefs.getInt("pos", 22), val -> {
             view.setPosFrac(val / 100f);
             prefs.edit().putInt("pos", val).apply();
@@ -183,11 +176,19 @@ public class MainActivity extends Activity {
             prefs.edit().putBoolean("white", white).apply();
             applyBg();
         });
+        Button inv = button("", false);
+        invBtn = inv;
+        inv.setOnClickListener(v -> {
+            boolean on = !prefs.getBoolean("invert", false);
+            prefs.edit().putBoolean("invert", on).apply();
+            applyInvert();
+        });
         Button hide = button("Hide", false);
         hide.setOnClickListener(v -> toggleDock());
         Button upd = button("Update", false);
         upd.setOnClickListener(v -> checkForUpdate(true));
         r2.addView(bgBtn, weight());
+        r2.addView(inv, weight());
         r2.addView(hide, weight());
         r2.addView(upd, weight());
         d.addView(r2);
@@ -264,14 +265,20 @@ public class MainActivity extends Activity {
         int c = white ? Color.WHITE : Color.BLACK;
         view.setBg(c);
         getWindow().getDecorView().setBackgroundColor(c);
-        bgBtn.setText(white ? "Background: White" : "Background: Black");
-        counter.setTextColor(white ? 0xFF555A60 : MUTED);
+        bgBtn.setText(white ? "BG: White" : "BG: Black");
+    }
+
+    private void applyInvert() {
+        boolean on = prefs.getBoolean("invert", false);
+        view.setInvert(on);
+        invBtn.setText(on ? "Invert: On" : "Invert: Off");
+        invBtn.setTextColor(on ? 0xFF1A1300 : INK);
+        invBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(on ? ACCENT : 0xFF2A2E33));
     }
 
     private void toggleDock() {
         dockShown = !dockShown;
         dock.animate().translationY(dockShown ? 0 : dock.getHeight()).setDuration(200).start();
-        counter.animate().alpha(dockShown ? 1f : 0f).setDuration(200).start();
     }
 
     private void updateCounter() {

@@ -7,6 +7,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.ImageDecoder;
 import android.graphics.Paint;
 import android.graphics.RectF;
@@ -85,6 +86,16 @@ public class LogoView extends View {
     public void setPosFrac(float f) { posFrac = f; invalidate(); }
     public void setSizeFrac(float f) { sizeFrac = f; invalidate(); }
     public void setBg(int color) { bg = color; invalidate(); }
+
+    /** Inverts the image colours (transparent areas stay transparent). */
+    public void setInvert(boolean on) {
+        bmpPaint.setColorFilter(on ? new ColorMatrixColorFilter(new float[]{
+                -1, 0, 0, 0, 255,
+                0, -1, 0, 0, 255,
+                0, 0, -1, 0, 255,
+                0, 0, 0, 1, 0}) : null);
+        invalidate();
+    }
 
     private Bitmap get(int i) {
         if (i < 0 || i >= uris.size()) return null;
