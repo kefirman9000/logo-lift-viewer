@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -54,6 +55,7 @@ public class MainActivity extends Activity {
     private TextView counter;
     private Button bgBtn;
     private Button invBtn;
+    private Button flipBtn;
     private boolean dockShown = true;
     private boolean fromFolder = false;
 
@@ -83,6 +85,7 @@ public class MainActivity extends Activity {
         hideSystemBars();
         applyBg();
         applyInvert();
+        applyFlip();
 
         view.setListener(new LogoView.Listener() {
             @Override public void onTap() { toggleDock(); }
@@ -165,8 +168,15 @@ public class MainActivity extends Activity {
             i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             startActivityForResult(i, REQ_PICK);
         });
+        flipBtn = button("", false);
+        flipBtn.setOnClickListener(v -> {
+            boolean on = !prefs.getBoolean("flip", false);
+            prefs.edit().putBoolean("flip", on).apply();
+            applyFlip();
+        });
         r1.addView(folder, weight());
         r1.addView(pick, weight());
+        r1.addView(flipBtn, weight());
         d.addView(r1);
 
         LinearLayout r2 = row();
@@ -266,6 +276,16 @@ public class MainActivity extends Activity {
         view.setBg(c);
         getWindow().getDecorView().setBackgroundColor(view.shownBg());
         bgBtn.setText(white ? "BG: White" : "BG: Black");
+    }
+
+    /** Upside-down mode: turns the whole app 180° so a camera notch ends up at the bottom. */
+    private void applyFlip() {
+        boolean on = prefs.getBoolean("flip", false);
+        setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                                   : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        flipBtn.setText(on ? "Flipped" : "Flip");
+        flipBtn.setTextColor(on ? 0xFF1A1300 : INK);
+        flipBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(on ? ACCENT : 0xFF2A2E33));
     }
 
     private void applyInvert() {
