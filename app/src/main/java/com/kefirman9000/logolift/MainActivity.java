@@ -264,13 +264,14 @@ public class MainActivity extends Activity {
         boolean white = prefs.getBoolean("white", false);
         int c = white ? Color.WHITE : Color.BLACK;
         view.setBg(c);
-        getWindow().getDecorView().setBackgroundColor(c);
+        getWindow().getDecorView().setBackgroundColor(view.shownBg());
         bgBtn.setText(white ? "BG: White" : "BG: Black");
     }
 
     private void applyInvert() {
         boolean on = prefs.getBoolean("invert", false);
         view.setInvert(on);
+        getWindow().getDecorView().setBackgroundColor(view.shownBg());
         invBtn.setText(on ? "Invert: On" : "Invert: Off");
         invBtn.setTextColor(on ? 0xFF1A1300 : INK);
         invBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(on ? ACCENT : 0xFF2A2E33));

@@ -38,6 +38,7 @@ public class LogoView extends View {
     private float posFrac = 0.22f;
     private float sizeFrac = 0.70f;
     private int bg = Color.BLACK;
+    private boolean invert = false;
     private float offset = 0f;
     private Listener listener;
 
@@ -89,6 +90,7 @@ public class LogoView extends View {
 
     /** Inverts the image colours (transparent areas stay transparent). */
     public void setInvert(boolean on) {
+        invert = on;
         bmpPaint.setColorFilter(on ? new ColorMatrixColorFilter(new float[]{
                 -1, 0, 0, 0, 255,
                 0, -1, 0, 0, 255,
@@ -132,9 +134,10 @@ public class LogoView extends View {
 
     @Override
     protected void onDraw(Canvas c) {
-        c.drawColor(bg);
+        int shownBg = shownBg();
+        c.drawColor(shownBg);
         float W = getWidth(), H = getHeight();
-        textPaint.setColor(isLight(bg) ? 0xFF555A60 : 0xFF8B929A);
+        textPaint.setColor(isLight(shownBg) ? 0xFF555A60 : 0xFF8B929A);
 
         if (uris.isEmpty()) {
             c.drawText("Open a folder or pick images below", W / 2, posFrac * H, textPaint);
@@ -168,6 +171,11 @@ public class LogoView extends View {
         }
         rect.set(W / 2 - tw / 2 + dx, cy - th / 2, W / 2 + tw / 2 + dx, cy + th / 2);
         c.drawBitmap(b, null, rect, bmpPaint);
+    }
+
+    /** Background as displayed: inverted along with the image when invert is on. */
+    public int shownBg() {
+        return invert ? Color.rgb(255 - Color.red(bg), 255 - Color.green(bg), 255 - Color.blue(bg)) : bg;
     }
 
     private static boolean isLight(int color) {
