@@ -7,6 +7,7 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Insets;
@@ -72,6 +73,14 @@ public class MainActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
+        // If anything (a call, a notification, the volume panel, a rotation) brings the
+        // status bar / nav bar / taskbar back while we're on screen, tuck them away again.
+        root.setOnApplyWindowInsetsListener((v, ins) -> {
+            if (ins.isVisible(WindowInsets.Type.statusBars()) || ins.isVisible(WindowInsets.Type.navigationBars())) {
+                scheduleHide(1500);
+            }
+            return v.onApplyWindowInsets(ins);
+        });
 
         view = new LogoView(this);
         view.setPosFrac(prefs.getInt("pos", 22) / 100f);
@@ -108,9 +117,39 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        hideSystemBars();
+        scheduleHide(500); // again after the resume animation; some phones re-show bars mid-transition
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (view != null) view.removeCallbacks(hideRunnable);
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemBars();
+        if (hasFocus) {
+            hideSystemBars();
+            scheduleHide(500);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // we handle rotation ourselves (Flip), so the window isn't recreated and the bars can come back
+        hideSystemBars();
+        scheduleHide(500);
+    }
+
+    @Override
+    public void onMultiWindowModeChanged(boolean inMultiWindow, Configuration newConfig) {
+        super.onMultiWindowModeChanged(inMultiWindow, newConfig);
+        hideSystemBars();
     }
 
     @Override
@@ -120,11 +159,21 @@ public class MainActivity extends Activity {
         return super.onKeyDown(keyCode, event);
     }
 
+    private final Runnable hideRunnable = this::hideSystemBars;
+
+    private void scheduleHide(long delayMs) {
+        if (view == null) return;
+        view.removeCallbacks(hideRunnable);
+        view.postDelayed(hideRunnable, delayMs);
+    }
+
+    /** Full immersive mode: hides the status bar, nav bar and (on tablets/foldables) the taskbar. */
     private void hideSystemBars() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         WindowInsetsController c = getWindow().getInsetsController();
         if (c != null) {
-            c.hide(WindowInsets.Type.systemBars());
             c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            c.hide(WindowInsets.Type.systemBars());
         }
     }
 
