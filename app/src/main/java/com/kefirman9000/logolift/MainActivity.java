@@ -17,6 +17,7 @@ import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
+import android.provider.OpenableColumns;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -61,6 +62,16 @@ public class MainActivity extends Activity {
     private TextView bgBtn;
     private TextView invBtn;
     private TextView flipBtn;
+    private TextView orderBtn;
+
+    /** One image plus what we need to sort it. Kept in the same order the viewer shows them. */
+    private static class Item {
+        final Uri uri; final String name; final long modified;
+        Item(Uri u, String n, long m) { uri = u; name = n == null ? "" : n; modified = m; }
+    }
+    private final ArrayList<Item> items = new ArrayList<>();
+    private static final String[] ORDER_LABELS = {"A \u2192 Z", "Z \u2192 A", "Newest", "Oldest", "Shuffle"};
+    private static final String[] ORDER_NAMES = {"A to Z", "Z to A", "newest first", "oldest first", "random"};
     private SeekBar posBar;
     private SeekBar sizeBar;
     private boolean dockShown = true;
@@ -106,7 +117,7 @@ public class MainActivity extends Activity {
             @Override public void onTap() { toggleDock(); }
             @Override public void onIndexChanged(int i) {
                 updateCounter();
-                if (fromFolder) prefs.edit().putInt("idx", i).apply();
+                if (fromFolder && i < items.size()) prefs.edit().putString("cur", items.get(i).uri.toString()).apply();
             }
         });
         updateCounter();
@@ -244,10 +255,13 @@ public class MainActivity extends Activity {
             i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             startActivityForResult(i, REQ_PICK);
         });
+        orderBtn = button(ORDER_LABELS[order()]);
+        orderBtn.setOnClickListener(v -> cycleOrder());
         TextView upd = button("Update");
         upd.setOnClickListener(v -> checkForUpdate(true));
         r1.addView(folder, weight());
         r1.addView(pick, weight());
+        r1.addView(orderBtn, weight());
         r1.addView(upd, weight());
         d.addView(r1);
 
@@ -418,8 +432,8 @@ public class MainActivity extends Activity {
             try {
                 getContentResolver().takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION);
             } catch (SecurityException ignored) { }
-            prefs.edit().putString("tree", tree.toString()).putInt("idx", 0).apply();
-            loadTree(tree, 0);
+            prefs.edit().putString("tree", tree.toString()).remove("cur").apply();
+            loadTree(tree, null);
         } else if (req == REQ_PICK) {
             ArrayList<Uri> list = new ArrayList<>();
             ClipData clip = data.getClipData();
@@ -428,8 +442,7 @@ public class MainActivity extends Activity {
             } else if (data.getData() != null) {
                 list.add(data.getData());
             }
-            fromFolder = false;
-            view.setImages(list, 0);
+            loadUris(list);
         }
     }
 
@@ -445,49 +458,126 @@ public class MainActivity extends Activity {
             if (us != null) list.addAll(us);
         }
         if (list.isEmpty()) return false;
-        fromFolder = false;
-        view.setImages(list, 0);
+        loadUris(list);
         return true;
     }
 
     private void restoreFolder() {
         String t = prefs.getString("tree", null);
-        if (t != null) loadTree(Uri.parse(t), prefs.getInt("idx", 0));
+        if (t != null) {
+            String cur = prefs.getString("cur", null);
+            loadTree(Uri.parse(t), cur == null ? null : Uri.parse(cur));
+        }
     }
 
-    private void loadTree(Uri tree, int start) {
+    private void loadTree(Uri tree, Uri keep) {
         final ContentResolver cr = getContentResolver();
         new Thread(() -> {
-            final ArrayList<String[]> items = new ArrayList<>(); // name, docId
+            final ArrayList<Item> found = new ArrayList<>();
             String err = null;
             try {
                 Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree));
                 try (Cursor c = cr.query(children, new String[]{
                         DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                         DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                        DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null)) {
+                        DocumentsContract.Document.COLUMN_MIME_TYPE,
+                        DocumentsContract.Document.COLUMN_LAST_MODIFIED}, null, null, null)) {
                     while (c != null && c.moveToNext()) {
                         String mime = c.getString(2);
-                        if (mime != null && mime.startsWith("image/")) items.add(new String[]{c.getString(1), c.getString(0)});
+                        if (mime != null && mime.startsWith("image/")) {
+                            found.add(new Item(DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)),
+                                    c.getString(1), c.isNull(3) ? 0 : c.getLong(3)));
+                        }
                     }
                 }
             } catch (Exception e) {
                 err = e.getMessage();
             }
-            Collections.sort(items, (a, b) -> naturalCompare(a[0], b[0]));
-            final List<Uri> list = new ArrayList<>();
-            for (String[] it : items) list.add(DocumentsContract.buildDocumentUriUsingTree(tree, it[1]));
             final String error = err;
             runOnUiThread(() -> {
                 if (error != null) {
                     toast("Couldn't open that folder. Tap Open folder to choose it again.");
                     return;
                 }
-                if (list.isEmpty()) toast("No images in that folder");
+                if (found.isEmpty()) toast("No images in that folder");
                 fromFolder = true;
-                view.setImages(list, start);
+                showItems(found, keep);
             });
         }).start();
+    }
+
+    /** Picked or shared images: look up each one's name and date so they can be sorted too. */
+    private void loadUris(List<Uri> uris) {
+        final ContentResolver cr = getContentResolver();
+        new Thread(() -> {
+            final ArrayList<Item> found = new ArrayList<>();
+            for (Uri u : uris) {
+                String name = u.getLastPathSegment();
+                long mod = 0;
+                try (Cursor c = cr.query(u, null, null, null, null)) {
+                    if (c != null && c.moveToFirst()) {
+                        int n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                        if (n >= 0 && !c.isNull(n)) name = c.getString(n);
+                        int m = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED); // ms
+                        int ms = c.getColumnIndex("date_modified");                               // seconds (gallery shares)
+                        if (m >= 0 && !c.isNull(m)) mod = c.getLong(m);
+                        else if (ms >= 0 && !c.isNull(ms)) mod = c.getLong(ms) * 1000L;
+                    }
+                } catch (Exception ignored) { }
+                found.add(new Item(u, name, mod));
+            }
+            runOnUiThread(() -> {
+                fromFolder = false;
+                showItems(found, null);
+            });
+        }).start();
+    }
+
+    private int order() { return prefs.getInt("order", 0); }
+
+    /** Replaces the image list, sorts it by the chosen order, and stays on {@code keep} if it's there. */
+    private void showItems(List<Item> list, Uri keep) {
+        items.clear();
+        items.addAll(list);
+        sortItems();
+        int start = 0;
+        if (keep != null) {
+            for (int i = 0; i < items.size(); i++) if (items.get(i).uri.equals(keep)) { start = i; break; }
+        }
+        pushToView(start);
+    }
+
+    private void sortItems() {
+        switch (order()) {
+            case 1: Collections.sort(items, (a, b) -> naturalCompare(b.name, a.name)); break;
+            case 2: Collections.sort(items, (a, b) -> a.modified != b.modified ? Long.compare(b.modified, a.modified) : naturalCompare(a.name, b.name)); break;
+            case 3: Collections.sort(items, (a, b) -> a.modified != b.modified ? Long.compare(a.modified, b.modified) : naturalCompare(a.name, b.name)); break;
+            case 4: Collections.shuffle(items); break;
+            default: Collections.sort(items, (a, b) -> naturalCompare(a.name, b.name));
+        }
+    }
+
+    private void pushToView(int start) {
+        ArrayList<Uri> uris = new ArrayList<>();
+        for (Item it : items) uris.add(it.uri);
+        view.setImages(uris, start);
+    }
+
+    /** Order button: A-Z, Z-A, newest, oldest, shuffle. Keeps showing the same image. */
+    private void cycleOrder() {
+        int o = (order() + 1) % ORDER_LABELS.length;
+        prefs.edit().putInt("order", o).apply();
+        orderBtn.setText(ORDER_LABELS[o]);
+        if (!items.isEmpty()) {
+            Uri cur = items.get(Math.min(view.getIndex(), items.size() - 1)).uri;
+            sortItems();
+            int start = 0;
+            if (o != 4) { // when shuffling, start from the top of the new mix
+                for (int i = 0; i < items.size(); i++) if (items.get(i).uri.equals(cur)) { start = i; break; }
+            }
+            pushToView(start);
+        }
+        toast("Order: " + ORDER_NAMES[o]);
     }
 
     /** Sorts "logo2" before "logo10". */
