@@ -7,10 +7,13 @@ import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
@@ -21,7 +24,6 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
@@ -49,14 +51,16 @@ public class MainActivity extends Activity {
     private static final int INK = 0xFFE9EBEE;
     private static final int MUTED = 0xFF8B929A;
     private static final int ACCENT = 0xFFFFB020;
+    private static final int BTN_BG = 0xFF24282D;
+    private static final int BTN_LINE = 0xFF353A40;
 
     private SharedPreferences prefs;
     private LogoView view;
     private LinearLayout dock;
     private TextView counter;
-    private Button bgBtn;
-    private Button invBtn;
-    private Button flipBtn;
+    private TextView bgBtn;
+    private TextView invBtn;
+    private TextView flipBtn;
     private boolean dockShown = true;
     private boolean fromFolder = false;
 
@@ -182,34 +186,51 @@ public class MainActivity extends Activity {
     private LinearLayout buildDock() {
         LinearLayout d = new LinearLayout(this);
         d.setOrientation(LinearLayout.VERTICAL);
-        d.setBackgroundColor(DOCK_BG);
+        GradientDrawable panel = new GradientDrawable();
+        panel.setColor(DOCK_BG);
+        float r = dp(18);
+        panel.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+        d.setBackground(panel);
         d.setClickable(true); // don't let taps fall through to the image
         d.setOnApplyWindowInsetsListener((v, ins) -> {
             Insets n = ins.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars() | WindowInsets.Type.displayCutout());
-            v.setPadding(dp(16) + n.left, dp(8), dp(16) + n.right, dp(10) + n.bottom);
+            v.setPadding(dp(14) + n.left, dp(6), dp(14) + n.right, dp(12) + n.bottom);
             return ins;
         });
 
+        // header: image counter on the left, hide on the right
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
         counter = new TextView(this);
         counter.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         counter.setTypeface(android.graphics.Typeface.MONOSPACE);
         counter.setTextColor(MUTED);
-        counter.setGravity(Gravity.END);
-        d.addView(counter, new LinearLayout.LayoutParams(-1, -2));
+        head.addView(counter, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView hide = new TextView(this);
+        hide.setText("Hide \u25BE");
+        hide.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        hide.setTextColor(MUTED);
+        hide.setGravity(Gravity.CENTER);
+        hide.setPadding(dp(10), 0, dp(4), 0);
+        hide.setOnClickListener(v -> toggleDock());
+        head.addView(hide, new LinearLayout.LayoutParams(-2, dp(32)));
+        d.addView(head);
 
-        d.addView(sliderRow("HEIGHT", 6, 85, prefs.getInt("pos", 22), val -> {
+        d.addView(sliderRow("Height", 6, 85, prefs.getInt("pos", 22), val -> {
             view.setPosFrac(val / 100f);
             prefs.edit().putInt("pos", val).apply();
         }));
-        d.addView(sliderRow("SIZE", 15, 100, prefs.getInt("size", 70), val -> {
+        d.addView(sliderRow("Size", 15, 100, prefs.getInt("size", 70), val -> {
             view.setSizeFrac(val / 100f);
             prefs.edit().putInt("size", val).apply();
         }));
 
+        // row 1: where images come from, plus updates
         LinearLayout r1 = row();
-        Button folder = button("Open folder", true);
+        TextView folder = button("Folder");
         folder.setOnClickListener(v -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_FOLDER));
-        Button pick = button("Pick images", false);
+        TextView pick = button("Images");
         pick.setOnClickListener(v -> {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
@@ -217,39 +238,36 @@ public class MainActivity extends Activity {
             i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             startActivityForResult(i, REQ_PICK);
         });
-        flipBtn = button("", false);
+        TextView upd = button("Update");
+        upd.setOnClickListener(v -> checkForUpdate(true));
+        r1.addView(folder, weight());
+        r1.addView(pick, weight());
+        r1.addView(upd, weight());
+        d.addView(r1);
+
+        // row 2: display toggles (highlighted when on)
+        LinearLayout r2 = row();
+        flipBtn = button("Flip");
         flipBtn.setOnClickListener(v -> {
             boolean on = !prefs.getBoolean("flip", false);
             prefs.edit().putBoolean("flip", on).apply();
             applyFlip();
         });
-        r1.addView(folder, weight());
-        r1.addView(pick, weight());
-        r1.addView(flipBtn, weight());
-        d.addView(r1);
-
-        LinearLayout r2 = row();
-        bgBtn = button("", false);
+        invBtn = button("Invert");
+        invBtn.setOnClickListener(v -> {
+            boolean on = !prefs.getBoolean("invert", false);
+            prefs.edit().putBoolean("invert", on).apply();
+            applyInvert();
+        });
+        bgBtn = button("");
         bgBtn.setOnClickListener(v -> {
             boolean white = !prefs.getBoolean("white", false);
             prefs.edit().putBoolean("white", white).apply();
             applyBg();
         });
-        Button inv = button("", false);
-        invBtn = inv;
-        inv.setOnClickListener(v -> {
-            boolean on = !prefs.getBoolean("invert", false);
-            prefs.edit().putBoolean("invert", on).apply();
-            applyInvert();
-        });
-        Button hide = button("Hide", false);
-        hide.setOnClickListener(v -> toggleDock());
-        Button upd = button("Update", false);
-        upd.setOnClickListener(v -> checkForUpdate(true));
+        r2.addView(flipBtn, weight());
+        r2.addView(invBtn, weight());
         r2.addView(bgBtn, weight());
-        r2.addView(inv, weight());
-        r2.addView(hide, weight());
-        r2.addView(upd, weight());
         d.addView(r2);
         return d;
     }
@@ -260,29 +278,30 @@ public class MainActivity extends Activity {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setMinimumHeight(dp(44));
+        r.setMinimumHeight(dp(36));
 
         TextView l = new TextView(this);
         l.setText(label);
         l.setTextColor(MUTED);
-        l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        l.setLetterSpacing(0.08f);
-        r.addView(l, new LinearLayout.LayoutParams(dp(62), -2));
+        l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        r.addView(l, new LinearLayout.LayoutParams(dp(52), -2));
 
         SeekBar sb = new SeekBar(this);
         sb.setMin(min);
         sb.setMax(max);
         sb.setProgress(value);
-        sb.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
-        sb.setThumbTintList(android.content.res.ColorStateList.valueOf(ACCENT));
+        sb.setProgressTintList(ColorStateList.valueOf(ACCENT));
+        sb.setThumbTintList(ColorStateList.valueOf(ACCENT));
+        sb.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF3A3F45));
         r.addView(sb, new LinearLayout.LayoutParams(0, -2, 1));
 
         TextView out = new TextView(this);
         out.setText(value + "%");
         out.setTextColor(INK);
+        out.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         out.setTypeface(android.graphics.Typeface.MONOSPACE);
         out.setGravity(Gravity.END);
-        r.addView(out, new LinearLayout.LayoutParams(dp(48), -2));
+        r.addView(out, new LinearLayout.LayoutParams(dp(40), -2));
 
         sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
@@ -298,25 +317,36 @@ public class MainActivity extends Activity {
     private LinearLayout row() {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setPadding(0, dp(4), 0, 0);
+        r.setPadding(0, dp(8), 0, 0);
         return r;
     }
 
     private LinearLayout.LayoutParams weight() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(46), 1);
-        p.setMargins(dp(3), 0, dp(3), 0);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(38), 1);
+        p.setMargins(dp(4), 0, dp(4), 0);
         return p;
     }
 
-    private Button button(String text, boolean primary) {
-        Button b = new Button(this);
+    /** Every dock button looks the same: a flat rounded pill, same size, same text. */
+    private TextView button(String text) {
+        TextView b = new TextView(this);
         b.setText(text);
-        b.setAllCaps(false);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-        b.setTextColor(primary ? 0xFF1A1300 : INK);
-        b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(primary ? ACCENT : 0xFF2A2E33));
-        b.setPadding(dp(6), 0, dp(6), 0);
+        b.setGravity(Gravity.CENTER);
+        b.setSingleLine(true);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        b.setClickable(true);
+        b.setFocusable(true);
+        styleButton(b, false);
         return b;
+    }
+
+    private void styleButton(TextView b, boolean on) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(dp(10));
+        shape.setColor(on ? 0x33FFB020 : BTN_BG);
+        shape.setStroke(dp(1), on ? ACCENT : BTN_LINE);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), shape, null));
+        b.setTextColor(on ? ACCENT : INK);
     }
 
     private void applyBg() {
@@ -324,7 +354,8 @@ public class MainActivity extends Activity {
         int c = white ? Color.WHITE : Color.BLACK;
         view.setBg(c);
         getWindow().getDecorView().setBackgroundColor(view.shownBg());
-        bgBtn.setText(white ? "BG: White" : "BG: Black");
+        bgBtn.setText(white ? "White BG" : "Black BG");
+        styleButton(bgBtn, white);
     }
 
     /** Upside-down mode: turns the whole app 180° so a camera notch ends up at the bottom. */
@@ -332,20 +363,16 @@ public class MainActivity extends Activity {
         boolean on = prefs.getBoolean("flip", false);
         setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
                                    : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        flipBtn.setText(on ? "Flipped" : "Flip");
+        styleButton(flipBtn, on);
         // when flipped, tuck the dock away so the screen is clear; tap the image to bring it back
         if (on && dockShown) dock.post(this::toggleDock);
-        flipBtn.setTextColor(on ? 0xFF1A1300 : INK);
-        flipBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(on ? ACCENT : 0xFF2A2E33));
     }
 
     private void applyInvert() {
         boolean on = prefs.getBoolean("invert", false);
         view.setInvert(on);
         getWindow().getDecorView().setBackgroundColor(view.shownBg());
-        invBtn.setText(on ? "Invert: On" : "Invert: Off");
-        invBtn.setTextColor(on ? 0xFF1A1300 : INK);
-        invBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(on ? ACCENT : 0xFF2A2E33));
+        styleButton(invBtn, on);
     }
 
     private void toggleDock() {

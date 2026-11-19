@@ -9,8 +9,8 @@ An Android image viewer for checking logos and stock images. Swipe through your 
 - **Black or white background**, and **Invert** to flip the image and background colors.
 - **Flip** – turns the app upside down so a camera notch sits at the bottom, out of the way of the image.
 - **Swipe** left/right, or use the volume buttons, to move between images.
-- **Open folder** – shows every image in a folder, sorted by name, and reopens it next time.
-- **Pick images** – choose a handful of images, or share images to Logo Lift from your gallery.
+- **Folder** – shows every image in a folder, sorted by name, and reopens it next time.
+- **Images** – choose a handful of images, or share images to Logo Lift from your gallery.
 - Tap the image to hide the controls. Full screen, and the screen stays on.
 - **Update** button – checks GitHub for a newer version and downloads it only if you say yes.
 
