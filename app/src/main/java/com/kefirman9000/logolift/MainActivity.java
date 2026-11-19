@@ -61,6 +61,8 @@ public class MainActivity extends Activity {
     private TextView bgBtn;
     private TextView invBtn;
     private TextView flipBtn;
+    private SeekBar posBar;
+    private SeekBar sizeBar;
     private boolean dockShown = true;
     private boolean fromFolder = false;
 
@@ -217,14 +219,18 @@ public class MainActivity extends Activity {
         head.addView(hide, new LinearLayout.LayoutParams(-2, dp(32)));
         d.addView(head);
 
-        d.addView(sliderRow("Height", 6, 85, prefs.getInt("pos", 22), val -> {
+        LinearLayout posRow = sliderRow("Height", 6, 85, prefs.getInt("pos", 22), val -> {
             view.setPosFrac(val / 100f);
             prefs.edit().putInt("pos", val).apply();
-        }));
-        d.addView(sliderRow("Size", 15, 100, prefs.getInt("size", 70), val -> {
+        });
+        posBar = (SeekBar) posRow.getTag();
+        d.addView(posRow);
+        LinearLayout sizeRow = sliderRow("Size", 15, 100, prefs.getInt("size", 70), val -> {
             view.setSizeFrac(val / 100f);
             prefs.edit().putInt("size", val).apply();
-        }));
+        });
+        sizeBar = (SeekBar) sizeRow.getTag();
+        d.addView(sizeRow);
 
         // row 1: where images come from, plus updates
         LinearLayout r1 = row();
@@ -267,7 +273,10 @@ public class MainActivity extends Activity {
         });
         r2.addView(flipBtn, weight());
         r2.addView(invBtn, weight());
+        TextView reset = button("Reset");
+        reset.setOnClickListener(v -> resetSettings());
         r2.addView(bgBtn, weight());
+        r2.addView(reset, weight());
         d.addView(r2);
         return d;
     }
@@ -294,6 +303,7 @@ public class MainActivity extends Activity {
         sb.setThumbTintList(ColorStateList.valueOf(ACCENT));
         sb.setProgressBackgroundTintList(ColorStateList.valueOf(0xFF3A3F45));
         r.addView(sb, new LinearLayout.LayoutParams(0, -2, 1));
+        r.setTag(sb);
 
         TextView out = new TextView(this);
         out.setText(value + "%");
@@ -347,6 +357,18 @@ public class MainActivity extends Activity {
         shape.setStroke(dp(1), on ? ACCENT : BTN_LINE);
         b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), shape, null));
         b.setTextColor(on ? ACCENT : INK);
+    }
+
+    /** Puts Height, Size, Flip, Invert and the background back to how a fresh install starts. */
+    private void resetSettings() {
+        boolean wasFlipped = prefs.getBoolean("flip", false);
+        prefs.edit().putBoolean("flip", false).putBoolean("invert", false).putBoolean("white", false).apply();
+        posBar.setProgress(22);   // the slider listeners save these and move the image
+        sizeBar.setProgress(70);
+        applyBg();
+        applyInvert();
+        if (wasFlipped) applyFlip();
+        toast("Settings reset");
     }
 
     private void applyBg() {
